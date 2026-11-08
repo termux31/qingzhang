@@ -1,0 +1,39 @@
+# Android Studio / Gradle
+.gradle/
+.gradle-home/
+.kotlin/
+.idea/
+**/build/
+.cxx/
+.externalNativeBuild/
+captures/
+*.iml
+local.properties
+
+# Local SDK, JDK, emulator and agent tools
+.tools/
+.android-sdk/
+.android-avd/
+.test-artifacts/
+
+# Generated application packages and signing material
+*.apk
+*.aab
+*.apks
+*.jks
+*.keystore
+keystore.properties
+
+# Generated update-server payloads; keep publish scripts in source control
+update-server/public/
+
+# Agent-local memory and scratch files
+.ai-memory/
+.workbuddy/
+wj.txt
+server_manifest_debug.json
+
+# Internal work records and unreferenced artwork
+Plan/
+design/
+/bookkeeping-*.png

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Adaptive icon XML must remain version-qualified even though minSdk is 26. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+    <!-- This app intentionally uses the full supplied illustration as its icon. -->
+    <issue id="IconLauncherShape" severity="ignore" />
+</lint>
