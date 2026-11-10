@@ -33,5 +33,5 @@ internal fun ReminderSettings.isDailyDue(now: ZonedDateTime): Boolean {
 internal fun LivingPlan.settlementAt(zone: ZoneId): ZonedDateTime =
     endDate.plusDays(1).atTime(9, 0).atZone(zone)
 
-internal fun LivingPlan.isOverBudget(today: LocalDate, spent: Long, saved: Long): Boolean =
-    today in startDate..endDate && budgetOn(today, spent, saved).remainingCents < 0
+internal fun LivingPlan.isOverBudget(today: LocalDate, spent: Long, saved: Long, goalArchived: Boolean = false): Boolean =
+    today in startDate..endDate && budgetOn(today, spent, saved, goalArchived).remainingCents < 0

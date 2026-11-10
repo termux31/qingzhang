@@ -1,5 +1,7 @@
 package com.example.qingzhang.ui
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -26,6 +28,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -64,6 +67,8 @@ data class StatsContent(
 class LedgerViewModel(private val repository: LedgerRepository) : ViewModel() {
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val messages = _messages.asSharedFlow()
+    private val _backupBusy = MutableStateFlow(false)
+    val backupBusy = _backupBusy.asStateFlow()
 
     val categories: StateFlow<List<CategoryEntity>> = repository.categories
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -76,7 +81,7 @@ class LedgerViewModel(private val repository: LedgerRepository) : ViewModel() {
     val savingsGoals = repository.livingPlans.goals
     val planIncomes = repository.livingPlans.incomes
     val activeLivingPlan = combine(livingPlans, currentDay) { plans, day ->
-        plans.firstOrNull { day.toLocalDate() in it.plan.startDate..it.plan.endDate } to day.zone
+        plans.firstOrNull { !it.plan.archived && day.toLocalDate() in it.plan.startDate..it.plan.endDate } to day.zone
     }.distinctUntilChanged().flatMapLatest { (plan, zone) ->
         if (plan == null) flowOf(null) else observePlanSpending(plan.plan, zone).map { plan to it }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -97,12 +102,12 @@ class LedgerViewModel(private val repository: LedgerRepository) : ViewModel() {
     val statsContent: StateFlow<StatsContent> = _statsSelection.flatMapLatest { selection ->
         val (start, end) = StatisticsCalculator.queryRange(selection.period, selection.anchor)
         repository.observeRange(start.startMillis(), end.endExclusiveMillis())
-            .combine(_statsSelection) { records, currentSelection ->
+            .map { records ->
                 StatsContent(
-                    selection = currentSelection,
-                    statistics = StatisticsCalculator.calculate(records, currentSelection.period, currentSelection.anchor),
-                    monthlyAnalysis = if (currentSelection.period == StatsPeriod.MONTH) {
-                        StatisticsCalculator.analyzeMonth(records, YearMonth.from(currentSelection.anchor))
+                    selection = selection,
+                    statistics = StatisticsCalculator.calculate(records, selection.period, selection.anchor),
+                    monthlyAnalysis = if (selection.period == StatsPeriod.MONTH) {
+                        StatisticsCalculator.analyzeMonth(records, YearMonth.from(selection.anchor))
                     } else {
                         null
                     },
@@ -162,6 +167,30 @@ class LedgerViewModel(private val repository: LedgerRepository) : ViewModel() {
         CsvExporter.export(repository.getBills(_billFilter.value))
     }
 
+    fun transferBackup(context: Context, uri: Uri, restore: Boolean) {
+        if (_backupBusy.value) return
+        _backupBusy.value = true
+        val appContext = context.applicationContext
+        viewModelScope.launch {
+            try {
+                if (restore) {
+                    repository.backup.restoreFrom(appContext, uri)
+                    _messages.emit("账本已恢复")
+                } else {
+                    repository.backup.exportTo(appContext, uri)
+                    _messages.emit("账本备份已保存")
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val message = if (error is IllegalArgumentException) error.message else null
+                _messages.emit(message ?: if (restore) "恢复失败，账本未更改" else "备份失败，请重新导出")
+            } finally {
+                _backupBusy.value = false
+            }
+        }
+    }
+
     fun addCategory(name: String, type: TransactionType) {
         viewModelScope.launch {
             runCatching { repository.addCategory(name, type) }
@@ -212,7 +241,46 @@ class LedgerViewModel(private val repository: LedgerRepository) : ViewModel() {
 
     suspend fun createLivingPlan(plan: LivingPlan) = repository.livingPlans.createPlan(plan)
 
-    suspend fun createSavingsGoal(name: String, targetCents: Long) = repository.livingPlans.createGoal(name, targetCents)
+    suspend fun createSavingsGoal(name: String, targetCents: Long, targetDay: Long? = null) =
+        repository.livingPlans.createGoal(name, targetCents, targetDay)
+
+    suspend fun updateLivingPlan(planId: Long, budgetCents: Long, reserveCents: Long) =
+        repository.livingPlans.updatePlanValues(planId, budgetCents, reserveCents)
+
+    suspend fun updateSavingsGoal(goalId: Long, name: String, targetCents: Long) =
+        repository.livingPlans.updateGoalDetails(goalId, name, targetCents)
+
+    fun archiveLivingPlan(planId: Long) {
+        viewModelScope.launch {
+            runCatching { repository.livingPlans.archivePlan(planId) }
+                .onSuccess { _messages.emit("生活费计划已归档") }
+                .onFailure { _messages.emit(it.message ?: "生活费计划归档失败") }
+        }
+    }
+
+    fun archiveSavingsGoal(goalId: Long) {
+        viewModelScope.launch {
+            runCatching { repository.livingPlans.archiveGoal(goalId) }
+                .onSuccess { _messages.emit("攒钱目标已归档") }
+                .onFailure { _messages.emit(it.message ?: "攒钱目标归档失败") }
+        }
+    }
+
+    fun deleteLivingPlan(planId: Long) {
+        viewModelScope.launch {
+            runCatching { repository.livingPlans.deletePlan(planId) }
+                .onSuccess { _messages.emit("生活费计划已删除") }
+                .onFailure { _messages.emit(it.message ?: "生活费计划删除失败") }
+        }
+    }
+
+    fun deleteSavingsGoal(goalId: Long) {
+        viewModelScope.launch {
+            runCatching { repository.livingPlans.deleteGoal(goalId) }
+                .onSuccess { _messages.emit("攒钱目标已删除") }
+                .onFailure { _messages.emit(it.message ?: "攒钱目标删除失败") }
+        }
+    }
 
     suspend fun transferPlanSavings(planId: Long, amountCents: Long, zone: ZoneId) =
         repository.livingPlans.transferFromPlan(planId, amountCents, zone)

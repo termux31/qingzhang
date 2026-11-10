@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.qingzhang"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.1.8"
+        versionCode = 12
+        versionName = "0.1.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$escapedUpdateManifestUrl\"")
     }
@@ -38,6 +38,7 @@ android {
         buildConfig = true
     }
     ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+    sourceSets["androidTest"].assets.srcDirs("$projectDir/schemas")
     packaging { resources.excludes += "META-INF/{AL2.0,LGPL2.1}" }
 }
 
@@ -71,4 +72,5 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
 }

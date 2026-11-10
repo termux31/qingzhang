@@ -1,6 +1,7 @@
 package com.example.qingzhang.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,12 +9,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -30,6 +40,7 @@ import com.example.qingzhang.data.GoalProgress
 import com.example.qingzhang.data.TransactionType
 import com.example.qingzhang.domain.formatCents
 import com.example.qingzhang.domain.signedCents
+import com.example.qingzhang.domain.weeklySavingsCents
 import com.example.qingzhang.ui.LedgerViewModel
 import com.example.qingzhang.ui.components.SectionCard
 import java.time.LocalDate
@@ -37,12 +48,15 @@ import java.time.LocalDate
 @Composable
 fun SavingsScreen(viewModel: LedgerViewModel, onBack: () -> Unit, initialGoalId: Long? = null) {
     val goals by viewModel.savingsGoals.collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeGoals = goals.filter { !it.goal.archived }
+    val archivedGoals = goals.filter { it.goal.archived }
     val day by viewModel.currentDay.collectAsStateWithLifecycle()
     var creating by rememberSaveable { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialGoalId) }
     var withdrawing by rememberSaveable { mutableStateOf(false) }
     var recording by rememberSaveable { mutableStateOf(false) }
-    val selected = goals.firstOrNull { it.goal.id == selectedId } ?: goals.firstOrNull()
+    var showHistory by rememberSaveable { mutableStateOf(false) }
+    val selected = activeGoals.firstOrNull { it.goal.id == selectedId } ?: activeGoals.firstOrNull()
     val entries = if (selected == null) emptyList() else key(selected.goal.id) {
         val entryFlow = remember { viewModel.observeSavingsEntries(selected.goal.id) }
         entryFlow.collectAsStateWithLifecycle(initialValue = emptyList()).value
@@ -51,12 +65,23 @@ fun SavingsScreen(viewModel: LedgerViewModel, onBack: () -> Unit, initialGoalId:
     if (creating) {
         var name by rememberSaveable { mutableStateOf("") }
         var target by rememberSaveable { mutableStateOf("") }
+        var hasTargetDate by rememberSaveable { mutableStateOf(false) }
+        var targetDay by rememberSaveable { mutableStateOf(day.toLocalDate().plusDays(180).toEpochDay()) }
         BudgetDialog("新建攒钱目标", "保存目标", { creating = false }, submit = {
-            selectedId = viewModel.createSavingsGoal(name, positiveAmount(target))
+            selectedId = viewModel.createSavingsGoal(
+                name,
+                positiveAmount(target),
+                if (hasTargetDate) targetDay else null,
+            )
             creating = false
         }) {
             OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("目标名称") }, singleLine = true)
             BudgetAmountField(target, { target = it }, "目标金额")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("设置目标日期", modifier = Modifier.weight(1f))
+                Switch(checked = hasTargetDate, onCheckedChange = { hasTargetDate = it })
+            }
+            if (hasTargetDate) BudgetDateButton("目标日期", targetDay) { targetDay = it }
         }
     }
     if (recording && selected != null) {
@@ -73,31 +98,11 @@ fun SavingsScreen(viewModel: LedgerViewModel, onBack: () -> Unit, initialGoalId:
             if (selected == null) {
                 item { Text("设一个目标，记录每笔存入和取出。") }
             } else {
-                item {
-                    val goal = selected.goal
-                    val progress = (selected.savedCents.toFloat() / goal.targetCents.toFloat()).coerceIn(0f, 1f)
-                    SectionCard {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(goal.name, fontWeight = FontWeight.SemiBold)
-                            Text("已攒 ${formatCents(selected.savedCents)} / ${formatCents(goal.targetCents)}")
-                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                            if (selected.savedCents >= goal.targetCents) {
-                                Text("已达成")
-                            } else {
-                                val percent = selected.savedCents * 100 / goal.targetCents
-                                Text("$percent% · 还差 ${formatCents(goal.targetCents - selected.savedCents)}")
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { withdrawing = false; recording = true }) { Text("存入") }
-                                OutlinedButton(
-                                    onClick = { withdrawing = true; recording = true },
-                                    enabled = selected.savedCents > 0,
-                                ) { Text("取出") }
-                            }
-                        }
-                    }
-                }
-                items(goals.filter { it.goal.id != selected.goal.id }, key = { "goal-${it.goal.id}" }) { progress ->
+                item { GoalCard(viewModel, selected, day.toLocalDate(), onRecord = { withdraw ->
+                    withdrawing = withdraw
+                    recording = true
+                }) }
+                items(activeGoals.filter { it.goal.id != selected.goal.id }, key = { "goal-${it.goal.id}" }) { progress ->
                     OutlinedButton(onClick = { selectedId = progress.goal.id }, modifier = Modifier.fillMaxWidth()) {
                         Text("${progress.goal.name} · 已攒 ${formatCents(progress.savedCents)}")
                     }
@@ -106,12 +111,123 @@ fun SavingsScreen(viewModel: LedgerViewModel, onBack: () -> Unit, initialGoalId:
                 if (entries.isEmpty()) item { Text("暂无明细") }
                 items(entries, key = { it.id }) { entry ->
                     val label = when {
-                        entry.planId != null -> "生活费转入"
+                        entry.fromPlan -> "生活费转入"
                         entry.amountCents < 0 -> "取出"
                         else -> "存入"
                     }
                     Text("${LocalDate.ofEpochDay(entry.day)} · $label ${signedCents(kotlin.math.abs(entry.amountCents), entry.amountCents > 0)}")
                 }
+            }
+            if (archivedGoals.isNotEmpty()) {
+                item {
+                    TextButton(onClick = { showHistory = !showHistory }) {
+                        Text(if (showHistory) "收起历史目标" else "历史目标（${archivedGoals.size}）")
+                    }
+                }
+                if (showHistory) {
+                    items(archivedGoals, key = { "history-goal-${it.goal.id}" }) { progress ->
+                        Text(
+                            "${progress.goal.name} · 已攒 ${formatCents(progress.savedCents)} / ${formatCents(progress.goal.targetCents)}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalCard(
+    viewModel: LedgerViewModel,
+    progress: GoalProgress,
+    today: LocalDate,
+    onRecord: (Boolean) -> Unit,
+) {
+    val goal = progress.goal
+    val remaining = (goal.targetCents - progress.savedCents).coerceAtLeast(0)
+    val achieved = progress.savedCents >= goal.targetCents
+    var editing by rememberSaveable(goal.id) { mutableStateOf(false) }
+    var deleting by rememberSaveable(goal.id) { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    if (editing) {
+        var name by rememberSaveable(goal.id) { mutableStateOf(goal.name) }
+        var target by rememberSaveable(goal.id) { mutableStateOf(formatCents(goal.targetCents, false)) }
+        BudgetDialog("修改攒钱目标", "保存修改", { editing = false }, submit = {
+            viewModel.updateSavingsGoal(goal.id, name, positiveAmount(target))
+            editing = false
+        }) {
+            OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("目标名称") }, singleLine = true)
+            BudgetAmountField(target, { target = it }, "目标金额")
+            Text("已有存入、取出和生活费转入记录继续保留。", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    if (deleting) {
+        AlertDialog(
+            onDismissRequest = { deleting = false },
+            title = { Text("删除攒钱目标？") },
+            text = {
+                Text(
+                    "将删除目标「${goal.name}」及它的全部攒钱明细。账本收支保持不变；关联生活费计划的已转入金额仍计入已攒，仅释放尚未转入的预留。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleting = false
+                    viewModel.deleteSavingsGoal(goal.id)
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleting = false }) { Text("取消") } },
+        )
+    }
+
+    SectionCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(goal.name, fontWeight = FontWeight.SemiBold)
+                    goal.targetDay?.let { Text("目标日期 ${LocalDate.ofEpochDay(it)}", style = MaterialTheme.typography.bodySmall) }
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) { Icon(Icons.Default.MoreVert, "更多") }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("修改名称与金额") }, onClick = {
+                            menuExpanded = false
+                            editing = true
+                        })
+                        if (achieved) {
+                            DropdownMenuItem(text = { Text("归档目标") }, onClick = {
+                                menuExpanded = false
+                                viewModel.archiveSavingsGoal(goal.id)
+                            })
+                        }
+                        DropdownMenuItem(text = { Text("删除") }, onClick = {
+                            menuExpanded = false
+                            deleting = true
+                        })
+                    }
+                }
+            }
+            Text(
+                if (achieved) "目标已达成" else "还差 ${formatCents(remaining)}",
+                style = MaterialTheme.typography.titleMedium,
+                color = if (achieved) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+            )
+            weeklySavingsCents(remaining, today, goal.targetDay)?.let { weekly ->
+                Text("平均每周存 ${formatCents(weekly)}", style = MaterialTheme.typography.bodyMedium)
+            }
+            val progressValue = (progress.savedCents.toFloat() / goal.targetCents.toFloat()).coerceIn(0f, 1f)
+            Text("已攒 ${formatCents(progress.savedCents)} / ${formatCents(goal.targetCents)}")
+            LinearProgressIndicator(progress = { progressValue }, modifier = Modifier.fillMaxWidth())
+            if (!achieved) {
+                val percent = progress.savedCents * 100 / goal.targetCents
+                Text("$percent% 已完成")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onRecord(false) }) { Text("存入") }
+                OutlinedButton(onClick = { onRecord(true) }, enabled = progress.savedCents > 0) { Text("取出") }
             }
         }
     }

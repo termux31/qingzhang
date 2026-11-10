@@ -15,6 +15,7 @@ import com.example.qingzhang.data.SettingsRepository
 import com.example.qingzhang.data.TransactionEntity
 import com.example.qingzhang.data.TransactionInput
 import com.example.qingzhang.data.TransactionType
+import com.example.qingzhang.domain.StatsPeriod
 import com.example.qingzhang.domain.toMillis
 import com.example.qingzhang.importer.ImportCandidate
 import com.example.qingzhang.importer.StatementImporter
@@ -98,6 +99,30 @@ class LedgerInstrumentedTest {
     }
 
     @Test
+    fun extraDailyExpenseIsExcludedFromLimitButKeptInLedger() = runBlocking {
+        repository.updateDailyLimit(limitCents = 10_000, enabled = true)
+        val category = database.categoryDao().getAll().first { it.type == TransactionType.EXPENSE }
+        val date = LocalDate.of(2026, 11, 8)
+        val extra = repository.save(TransactionInput(
+            amountCents = 15_000,
+            type = TransactionType.EXPENSE,
+            categoryId = category.id,
+            occurredAt = date.atTime(12, 0).toMillis(),
+            extraDailyExpense = true,
+        ))
+        assertEquals(null, extra.warning)
+        val normal = repository.save(TransactionInput(
+            amountCents = 12_000,
+            type = TransactionType.EXPENSE,
+            categoryId = category.id,
+            occurredAt = date.atTime(13, 0).toMillis(),
+        ))
+        assertEquals(2_000L, normal.warning?.exceededCents)
+        val bills = repository.getBills(BillFilter(date, date, type = TransactionType.EXPENSE))
+        assertEquals(27_000L, bills.sumOf { it.transaction.amountCents })
+    }
+
+    @Test
     fun enforcesUniqueImportFingerprint() = runBlocking {
         val category = database.categoryDao().getAll().first { it.type == TransactionType.EXPENSE }
         val entity = TransactionEntity(
@@ -143,6 +168,37 @@ class LedgerInstrumentedTest {
             viewModel.refreshHomeDate(nextDay.atStartOfDay(zone))
             val updated = withTimeout(5_000) { viewModel.homeContent.first { it.day.toLocalDate() == nextDay } }
             assertEquals(newId, updated.records.single().transaction.id)
+        } finally {
+            withContext(Dispatchers.Main) { store.clear() }
+        }
+    }
+
+    @Test
+    fun statsPeriodChangesPublishOnlyTotalsFromTheMatchingQuery() = runBlocking {
+        val category = database.categoryDao().getAll().first { it.type == TransactionType.EXPENSE }
+        val store = ViewModelStore()
+        val viewModel = withContext(Dispatchers.Main) {
+            ViewModelProvider(store, LedgerViewModel.factory(repository))[LedgerViewModel::class.java]
+        }
+        try {
+            val anchor = viewModel.statsContent.value.selection.anchor
+            val otherMonth = anchor.withMonth(if (anchor.monthValue == 1) 12 else 1).withDayOfMonth(1)
+            for ((day, cents) in listOf(anchor to 100L, otherMonth to 200L)) {
+                repository.save(TransactionInput(
+                    amountCents = cents, type = category.type, categoryId = category.id,
+                    occurredAt = day.atTime(12, 0).toMillis(),
+                ))
+            }
+            val month = withTimeout(5_000) { viewModel.statsContent.first { it.monthlyAnalysis != null } }
+            assertEquals(100L, month.statistics.summary.expenseCents)
+
+            withContext(Dispatchers.Main) { viewModel.selectStatsPeriod(StatsPeriod.YEAR) }
+            val year = withTimeout(5_000) { viewModel.statsContent.first { it.selection.period == StatsPeriod.YEAR } }
+            assertEquals(300L, year.statistics.summary.expenseCents)
+
+            withContext(Dispatchers.Main) { viewModel.selectStatsPeriod(StatsPeriod.MONTH) }
+            val nextMonth = withTimeout(5_000) { viewModel.statsContent.first { it.selection.period == StatsPeriod.MONTH } }
+            assertEquals(100L, nextMonth.statistics.summary.expenseCents)
         } finally {
             withContext(Dispatchers.Main) { store.clear() }
         }

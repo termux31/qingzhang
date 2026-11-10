@@ -33,7 +33,7 @@ class SettingsRepository(
         AppSettings(
             dailyLimitCents = preferences[limitKey] ?: 0,
             dailyLimitEnabled = preferences[enabledKey] ?: false,
-            updateManifestUrl = preferences[updateUrlKey] ?: defaultUpdateManifestUrl,
+            updateManifestUrl = preferences[updateUrlKey]?.takeUnless { it.isBlank() } ?: defaultUpdateManifestUrl,
             autoCheckUpdates = preferences[autoCheckKey] ?: true,
             darkTheme = preferences[darkThemeKey],
         )

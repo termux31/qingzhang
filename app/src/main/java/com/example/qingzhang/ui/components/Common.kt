@@ -96,6 +96,7 @@ fun TransactionRow(detail: TransactionDetail, onClick: () -> Unit) {
             )
             Text(
                 "${detail.categoryName} · ${transaction.occurredAt.formatDateTime()}" +
+                    (if (transaction.extraDailyExpense) " · 额外" else "") +
                     if (transaction.note.isNotBlank()) " · ${transaction.note}" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

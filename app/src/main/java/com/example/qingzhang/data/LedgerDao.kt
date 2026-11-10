@@ -69,6 +69,13 @@ interface LedgerDao {
     )
     suspend fun expenseTotalBetween(startInclusive: Long, endExclusive: Long): Long
 
+    @Query(
+        """SELECT COALESCE(SUM(amountCents), 0) FROM transactions
+        WHERE type = 'EXPENSE' AND extraDailyExpense = 0
+        AND occurredAt >= :startInclusive AND occurredAt < :endExclusive""",
+    )
+    suspend fun dailyLimitExpenseBetween(startInclusive: Long, endExclusive: Long): Long
+
     @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE occurredAt >= :startInclusive AND occurredAt < :endExclusive)")
     suspend fun hasTransactionsBetween(startInclusive: Long, endExclusive: Long): Boolean
 }

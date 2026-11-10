@@ -3,6 +3,7 @@ package com.example.qingzhang
 import com.example.qingzhang.data.LivingPlan
 import com.example.qingzhang.domain.budgetOn
 import com.example.qingzhang.domain.endDate
+import com.example.qingzhang.domain.weeklySavingsCents
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -45,5 +46,14 @@ class LivingBudgetTest {
         assertEquals(-25_000L, overspent.remainingCents)
         assertEquals(0L, overspent.dailyCents!!)
         assertEquals(5_000L, overspent.transferableCents)
+    }
+
+    @Test
+    fun computesWeeklySavingsTowardTargetDate() {
+        val today = LocalDate.of(2026, 11, 8)
+        assertEquals(150L, weeklySavingsCents(600L, today, today.plusDays(27).toEpochDay()))
+        assertEquals(600L, weeklySavingsCents(600L, today, today.toEpochDay()))
+        assertNull(weeklySavingsCents(600L, today, today.minusDays(1).toEpochDay()))
+        assertNull(weeklySavingsCents(0L, today, today.plusDays(30).toEpochDay()))
     }
 }

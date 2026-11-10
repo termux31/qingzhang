@@ -12,7 +12,6 @@ data class UpdateManifest(
     val sha256: String,
     val sizeBytes: Long,
     val releaseNotes: String,
-    val force: Boolean,
 )
 
 object UpdateUrlPolicy {
@@ -72,7 +71,6 @@ object UpdateManifestParser {
             sha256 = sha256,
             sizeBytes = sizeBytes,
             releaseNotes = releaseNotes,
-            force = objectJson.optBoolean("force", false),
         )
     }
 }

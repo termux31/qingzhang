@@ -1,5 +1,11 @@
 package com.example.qingzhang.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -68,6 +74,14 @@ private val destinations = listOf(
     MainDestination("stats", "统计", Icons.Default.BarChart),
     MainDestination("mine", "我的", Icons.Default.Person),
 )
+
+private const val NAV_ANIMATION_MS = 280
+
+private fun navigationDirection(fromRoute: String?, toRoute: String?): Int {
+    val from = destinations.indexOfFirst { it.route == fromRoute }
+    val to = destinations.indexOfFirst { it.route == toRoute }
+    return if (from >= 0 && to >= 0 && to < from) -1 else 1
+}
 
 @Composable
 internal fun QingZhangApp(
@@ -161,6 +175,32 @@ internal fun QingZhangApp(
             navController = navController,
             startDestination = "home",
             modifier = Modifier.padding(padding),
+            enterTransition = {
+                val direction = navigationDirection(initialState.destination.route, targetState.destination.route)
+                slideInHorizontally(
+                    animationSpec = tween(NAV_ANIMATION_MS, easing = FastOutSlowInEasing),
+                    initialOffsetX = { fullWidth -> direction * fullWidth },
+                ) + fadeIn(animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            exitTransition = {
+                val direction = navigationDirection(initialState.destination.route, targetState.destination.route)
+                slideOutHorizontally(
+                    animationSpec = tween(NAV_ANIMATION_MS, easing = FastOutSlowInEasing),
+                    targetOffsetX = { fullWidth -> -direction * fullWidth / 3 },
+                ) + fadeOut(animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            popEnterTransition = {
+                slideInHorizontally(
+                    animationSpec = tween(NAV_ANIMATION_MS, easing = FastOutSlowInEasing),
+                    initialOffsetX = { fullWidth -> -fullWidth },
+                ) + fadeIn(animationSpec = tween(NAV_ANIMATION_MS))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    animationSpec = tween(NAV_ANIMATION_MS, easing = FastOutSlowInEasing),
+                    targetOffsetX = { fullWidth -> fullWidth },
+                ) + fadeOut(animationSpec = tween(NAV_ANIMATION_MS))
+            },
         ) {
             composable("home") {
                 HomeScreen(

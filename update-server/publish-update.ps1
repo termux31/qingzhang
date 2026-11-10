@@ -16,8 +16,6 @@ param(
 
     [string]$PackageName = "com.example.qingzhang",
 
-    [switch]$Force,
-
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "public")
 )
 
@@ -83,7 +81,6 @@ $manifest = [ordered]@{
     sha256       = $hash
     size         = $size
     releaseNotes = $ReleaseNotes
-    force        = [bool]$Force
 }
 
 $json = $manifest | ConvertTo-Json -Depth 3

@@ -60,6 +60,7 @@ data class TransactionEntity(
     val importKey: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+    val extraDailyExpense: Boolean = false,
 )
 
 data class TransactionDetail(
@@ -76,6 +77,7 @@ data class TransactionInput(
     val occurredAt: Long,
     val note: String = "",
     val merchant: String = "",
+    val extraDailyExpense: Boolean = false,
 )
 
 data class BillFilter(

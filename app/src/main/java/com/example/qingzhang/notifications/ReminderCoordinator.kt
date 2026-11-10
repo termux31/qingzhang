@@ -110,9 +110,10 @@ internal class ReminderCoordinator(
 
         for (progress in plans.plans.first()) {
             val plan = progress.plan
+            if (plan.archived) continue
             if (allowed && NoticeKind.OVER_BUDGET in config.enabledSince && day in plan.startDate..plan.endDate) {
                 val spent = ledger.expenseTotalBetween(plan.startDate.startMillis(zone), plan.endDate.endExclusiveMillis(zone))
-                if (plan.isOverBudget(day, spent, progress.savedCents) &&
+                if (plan.isOverBudget(day, spent, progress.savedCents, progress.goalArchived) &&
                     notificationsAllowed(context) && preferences.claim(NoticeKind.OVER_BUDGET, plan.id)
                 ) post(NoticeTarget(NoticeKind.OVER_BUDGET, plan.id))
             }
@@ -132,6 +133,7 @@ internal class ReminderCoordinator(
 
         if (allowed && NoticeKind.GOAL in config.enabledSince) {
             for (progress in plans.goals.first()) {
+                if (progress.goal.archived) continue
                 if (progress.savedCents >= progress.goal.targetCents &&
                     notificationsAllowed(context) && preferences.claim(NoticeKind.GOAL, progress.goal.id)
                 ) post(NoticeTarget(NoticeKind.GOAL, progress.goal.id))

@@ -1,5 +1,7 @@
 package com.example.qingzhang.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +62,7 @@ import com.example.qingzhang.domain.parseAmountCents
 import com.example.qingzhang.ui.LedgerViewModel
 import com.example.qingzhang.ui.components.EmptyState
 import com.example.qingzhang.ui.components.SectionCard
+import java.time.LocalDate
 
 @Composable
 fun MineScreen(
@@ -72,6 +77,14 @@ fun MineScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val darkTheme = settings.darkTheme ?: isSystemInDarkTheme()
+    val backupBusy by viewModel.backupBusy.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) viewModel.transferBackup(context, uri, restore = false)
+    }
+    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.transferBackup(context, uri, restore = true)
+    }
     LazyColumn(
         modifier = Modifier.statusBarsPadding(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -117,6 +130,27 @@ fun MineScreen(
         item { SettingsItem("大学生活费计划", "任选开始日期，规划 30 天生活费", Icons.Default.Today, onLivingPlans) }
         item { SettingsItem("攒钱目标", "记录存入和取出，查看目标进度", Icons.Default.Savings, onSavings) }
         item { SettingsItem("通知设置", "管理记账、生活费和攒钱提醒", Icons.Default.Notifications, onReminders) }
+        item {
+            SectionCard {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("账本备份与恢复", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "备份含账目、分类、生活费计划和攒钱明细。文件未加密，请妥善保管。仅可恢复到空账本。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { exportBackup.launch("轻账备份-${LocalDate.now()}.json") },
+                            enabled = !backupBusy,
+                        ) { Text("导出备份") }
+                        OutlinedButton(
+                            onClick = { restoreBackup.launch(arrayOf("application/json", "application/octet-stream")) },
+                            enabled = !backupBusy,
+                        ) { Text("恢复备份") }
+                    }
+                }
+            }
+        }
         item {
             SectionCard {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {

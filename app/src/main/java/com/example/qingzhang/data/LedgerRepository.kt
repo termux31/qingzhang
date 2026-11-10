@@ -25,6 +25,7 @@ class LedgerRepository(
     val categories: Flow<List<CategoryEntity>> = categoryDao.observeAll()
     val settings: Flow<AppSettings> = settingsRepository.settings
     internal val livingPlans = LivingPlanRepository(database)
+    internal val backup = LedgerBackup(database)
 
     suspend fun updateTheme(darkTheme: Boolean) = settingsRepository.updateTheme(darkTheme)
 
@@ -72,6 +73,7 @@ class LedgerRepository(
                         merchant = input.merchant.trim(),
                         createdAt = now,
                         updatedAt = now,
+                        extraDailyExpense = input.extraDailyExpense && input.type == TransactionType.EXPENSE,
                     ),
                 )
             } else {
@@ -85,6 +87,7 @@ class LedgerRepository(
                         occurredAt = input.occurredAt,
                         note = input.note.trim(),
                         merchant = input.merchant.trim(),
+                        extraDailyExpense = input.extraDailyExpense && input.type == TransactionType.EXPENSE,
                         updatedAt = now,
                     ),
                 )
@@ -215,7 +218,7 @@ class LedgerRepository(
 
     private suspend fun budgetWarning(date: LocalDate, appSettings: AppSettings): BudgetWarning? {
         if (!appSettings.dailyLimitEnabled) return null
-        val total = ledgerDao.expenseTotalBetween(date.startMillis(), date.endExclusiveMillis())
+        val total = ledgerDao.dailyLimitExpenseBetween(date.startMillis(), date.endExclusiveMillis())
         return if (total > appSettings.dailyLimitCents) {
             BudgetWarning(date, total, appSettings.dailyLimitCents)
         } else {

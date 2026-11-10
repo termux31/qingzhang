@@ -53,10 +53,13 @@ fun HomeScreen(
     val activePlan by viewModel.activeLivingPlan.collectAsStateWithLifecycle()
     val income = records.filter { it.transaction.type == TransactionType.INCOME }.sumOf { it.transaction.amountCents }
     val expense = records.filter { it.transaction.type == TransactionType.EXPENSE }.sumOf { it.transaction.amountCents }
-    val todayExpense = records.filter {
+    val todayExpenses = records.filter {
         it.transaction.type == TransactionType.EXPENSE &&
             it.transaction.occurredAt.toLocalDate(home.day.zone) == home.day.toLocalDate()
-    }.sumOf { it.transaction.amountCents }
+    }
+    val todayExpense = todayExpenses.sumOf { it.transaction.amountCents }
+    val todayExtraExpense = todayExpenses.filter { it.transaction.extraDailyExpense }.sumOf { it.transaction.amountCents }
+    val todayLimitedExpense = todayExpense - todayExtraExpense
 
     LazyColumn(
         modifier = Modifier.statusBarsPadding(),
@@ -87,9 +90,16 @@ fun HomeScreen(
                         Text("今日支出", fontWeight = FontWeight.SemiBold)
                         Text(formatCents(todayExpense), color = MaterialTheme.colorScheme.primary)
                     }
+                    if (todayExtraExpense > 0) {
+                        Text(
+                            "另有每日额外支出 ${formatCents(todayExtraExpense)}（不计入限额）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     if (settings.dailyLimitEnabled) {
-                        val progress = (todayExpense.toFloat() / settings.dailyLimitCents.toFloat()).coerceIn(0f, 1f)
-                        val progressColor = if (todayExpense > settings.dailyLimitCents) {
+                        val progress = (todayLimitedExpense.toFloat() / settings.dailyLimitCents.toFloat()).coerceIn(0f, 1f)
+                        val progressColor = if (todayLimitedExpense > settings.dailyLimitCents) {
                             MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.primary
@@ -107,13 +117,13 @@ fun HomeScreen(
                             }
                         }
                         Text(
-                            if (todayExpense > settings.dailyLimitCents) {
-                                "已超出限额 ${formatCents(todayExpense - settings.dailyLimitCents)}"
+                            if (todayLimitedExpense > settings.dailyLimitCents) {
+                                "已超出限额 ${formatCents(todayLimitedExpense - settings.dailyLimitCents)}"
                             } else {
-                                "每日限额 ${formatCents(settings.dailyLimitCents)}，还可支出 ${formatCents(settings.dailyLimitCents - todayExpense)}"
+                                "每日限额 ${formatCents(settings.dailyLimitCents)}，还可支出 ${formatCents(settings.dailyLimitCents - todayLimitedExpense)}"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (todayExpense > settings.dailyLimitCents) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (todayLimitedExpense > settings.dailyLimitCents) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
                         Text("每日限额提醒已关闭", style = MaterialTheme.typography.bodySmall)
@@ -126,7 +136,7 @@ fun HomeScreen(
                 SectionCard(Modifier.clickable(onClick = onLivingPlans)) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("大学生活费计划", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        PlanMetrics(progress.plan.budgetOn(home.day.toLocalDate(), spentCents, progress.savedCents), progress.savedCents)
+                        PlanMetrics(progress.plan.budgetOn(home.day.toLocalDate(), spentCents, progress.savedCents, progress.goalArchived), progress.savedCents)
                     }
                 }
             }

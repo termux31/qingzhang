@@ -17,8 +17,7 @@ class UpdateManifestTest {
           "apkUrl": "https://example.com/updates/qingzhang-1.1.1.apk",
           "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "size": 18000000,
-          "releaseNotes": "修复问题，优化导入",
-          "force": false
+          "releaseNotes": "修复问题，优化导入"
         }
     """.trimIndent()
 
@@ -28,7 +27,15 @@ class UpdateManifestTest {
         assertEquals(3L, manifest.versionCode)
         assertEquals("1.1.1", manifest.versionName)
         assertEquals(18_000_000L, manifest.sizeBytes)
-        assertFalse(manifest.force)
+    }
+
+    @Test
+    fun ignoresLegacyForceFlag() {
+        val legacyJson = validJson.dropLast(1) + """, "force": true}"""
+        assertEquals(
+            UpdateManifestParser.parse(validJson, "com.example.qingzhang", debugBuild = false),
+            UpdateManifestParser.parse(legacyJson, "com.example.qingzhang", debugBuild = false),
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)

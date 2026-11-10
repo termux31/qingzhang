@@ -80,7 +80,6 @@ with open(path, "w", encoding="utf-8") as handle:
         "sha256": digest,
         "size": int(size),
         "releaseNotes": notes,
-        "force": False,
     }, handle, ensure_ascii=False, indent=2)
 PY
 

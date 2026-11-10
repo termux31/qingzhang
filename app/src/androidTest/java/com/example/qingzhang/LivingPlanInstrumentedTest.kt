@@ -9,6 +9,7 @@ import com.example.qingzhang.data.LivingPlan
 import com.example.qingzhang.data.LivingPlanRepository
 import com.example.qingzhang.data.TransactionEntity
 import com.example.qingzhang.data.TransactionType
+import com.example.qingzhang.domain.budgetOn
 import com.example.qingzhang.domain.endExclusiveMillis
 import com.example.qingzhang.domain.startMillis
 import java.time.LocalDate
@@ -88,6 +89,82 @@ class LivingPlanInstrumentedTest {
         assertEquals(4_000L, repository.goals.first().single().savedCents)
         assertEquals(4, repository.entries(goalId).first().size)
         assertEquals(2_000L, repository.plans.first().single().savedCents)
+    }
+
+    @Test
+    fun editsArchivesAndDeletesPlansWithoutDeletingLedgerOrSavings() = runBlocking {
+        val today = LocalDate.now(zone)
+        val goal = repository.createGoal("旅行", 30_000, today.plusDays(30).toEpochDay())
+        val plan = repository.createPlan(LivingPlan(
+            startDay = today.toEpochDay(), budgetCents = 10_000, reserveCents = 3_000, goalId = goal, incomeId = null,
+        ))
+        repository.updatePlanValues(plan, 8_000, 2_000)
+        repository.updateGoalDetails(goal, "旅行基金", 20_000)
+        repository.transferFromPlan(plan, 2_000, zone)
+        repository.archivePlan(plan)
+        repository.archiveGoal(goal)
+        assertEquals(true, repository.plans.first().single().plan.archived)
+        assertEquals(true, repository.goals.first().single().goal.archived)
+        repository.deletePlan(plan)
+        assertEquals(emptyList<com.example.qingzhang.data.PlanProgress>(), repository.plans.first())
+        val transfer = repository.entries(goal).first().single()
+        assertEquals(null, transfer.planId)
+        assertEquals(true, transfer.fromPlan)
+        assertEquals(2_000L, transfer.amountCents)
+        val updatedGoal = repository.goals.first().single()
+        assertEquals(2_000L, updatedGoal.savedCents)
+        assertEquals("旅行基金", updatedGoal.goal.name)
+        assertEquals(today.plusDays(30).toEpochDay(), updatedGoal.goal.targetDay)
+    }
+
+    @Test
+    fun refusesToArchiveGoalWhileAnUnarchivedPlanUsesIt() = runBlocking {
+        val today = LocalDate.now(zone)
+        val goal = repository.createGoal("旅行", 1_000)
+        val plan = repository.createPlan(LivingPlan(
+            startDay = today.toEpochDay(), budgetCents = 10_000, reserveCents = 3_000, goalId = goal, incomeId = null,
+        ))
+        repository.transferFromPlan(plan, 1_000, zone)
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.archiveGoal(goal) }
+        }
+        assertEquals(false, repository.goals.first().single().goal.archived)
+        repository.transferFromPlan(plan, 2_000, zone)
+        assertEquals(3_000L, repository.goals.first().single().savedCents)
+    }
+
+    @Test
+    fun legacyArchivedGoalReleasesOnlyTheUntransferredReserve() = runBlocking {
+        val today = LocalDate.now(zone)
+        val goal = repository.createGoal("旅行", 1_000)
+        val plan = repository.createPlan(LivingPlan(
+            startDay = today.toEpochDay(), budgetCents = 10_000, reserveCents = 3_000, goalId = goal, incomeId = null,
+        ))
+        repository.transferFromPlan(plan, 1_000, zone)
+        val dao = database.livingPlanDao()
+        dao.updateGoal(requireNotNull(dao.getGoal(goal)).copy(archived = true))
+        val progress = repository.plans.first().single()
+        val budget = progress.plan.budgetOn(today, 0, progress.savedCents, progress.goalArchived)
+        assertEquals(9_000L, budget.remainingCents)
+        assertEquals(0L, budget.transferableCents)
+        assertEquals(1_000L, repository.entries(goal).first().single().amountCents)
+    }
+
+    @Test
+    fun deletingGoalPreservesTransferredAmountAndReleasesOnlyUnspentReserve() = runBlocking {
+        val today = LocalDate.now(zone)
+        val goal = repository.createGoal("应急金", 10_000)
+        val plan = repository.createPlan(LivingPlan(
+            startDay = today.toEpochDay(), budgetCents = 10_000, reserveCents = 3_000, goalId = goal, incomeId = null,
+        ))
+        repository.transferFromPlan(plan, 2_000, zone)
+        repository.deleteGoal(goal)
+        val progress = repository.plans.first().single()
+        assertEquals(null, progress.plan.goalId)
+        assertEquals(2_000L, progress.plan.detachedSavingsCents)
+        assertEquals(2_000L, progress.plan.reserveCents)
+        assertEquals(2_000L, progress.savedCents)
+        assertEquals(emptyList<com.example.qingzhang.data.GoalProgress>(), repository.goals.first())
     }
 
     @Test

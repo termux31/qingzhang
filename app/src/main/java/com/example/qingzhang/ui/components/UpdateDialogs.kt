@@ -55,7 +55,7 @@ fun UpdateDialogs(viewModel: UpdateViewModel, state: UpdateUiState) {
                         TextButton(onClick = viewModel::downloadUpdate) { Text("下载更新") }
                     },
                     dismissButton = {
-                        if (!manifest.force) TextButton(onClick = viewModel::dismissUpdate) { Text("稍后") }
+                        TextButton(onClick = viewModel::dismissUpdate) { Text("稍后") }
                     },
                 )
             }

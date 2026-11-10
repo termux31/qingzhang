@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +73,7 @@ fun EditTransactionScreen(
     var dateTime by rememberSaveable(transactionId) { mutableStateOf(LocalDateTime.now().withSecond(0).withNano(0)) }
     var merchant by rememberSaveable(transactionId) { mutableStateOf("") }
     var note by rememberSaveable(transactionId) { mutableStateOf("") }
+    var extraDailyExpense by rememberSaveable(transactionId) { mutableStateOf(false) }
     var loaded by rememberSaveable(transactionId) { mutableStateOf(transactionId == null) }
     var loadFailed by rememberSaveable(transactionId) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -92,6 +94,7 @@ fun EditTransactionScreen(
                 dateTime = detail.transaction.occurredAt.toLocalDateTime()
                 merchant = detail.transaction.merchant
                 note = detail.transaction.note
+                extraDailyExpense = detail.transaction.extraDailyExpense
             }
             loaded = true
         }
@@ -195,6 +198,17 @@ fun EditTransactionScreen(
                     isError = error.isNotBlank(),
                 )
             }
+            if (type == TransactionType.EXPENSE) {
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("每日额外支出", fontWeight = FontWeight.SemiBold)
+                            Text("不计入每日限额，仍计入账本和统计", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = extraDailyExpense, onCheckedChange = { extraDailyExpense = it })
+                    }
+                }
+            }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("分类", fontWeight = FontWeight.SemiBold)
@@ -263,6 +277,7 @@ fun EditTransactionScreen(
                                             occurredAt = dateTime.toMillis(),
                                             note = note,
                                             merchant = merchant,
+                                            extraDailyExpense = type == TransactionType.EXPENSE && extraDailyExpense,
                                         ),
                                     ).onSuccess { outcome ->
                                         outcome.warning?.let { onWarning(listOf(it)) }
